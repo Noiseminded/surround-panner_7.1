@@ -89,7 +89,7 @@ jobs:
       - name: Get Rack-SDK
         run: |
           pushd $HOME
-          curl -fsSL -o Rack-SDK.zip "https://vcvrack.com/downloads/Rack-SDK-${{ env.rack-sdk-version }}-mac-x64%2Barm64.zip"
+          curl -fSL --retry 5 --retry-all-errors --retry-delay 5 -A "Mozilla/5.0" -o Rack-SDK.zip "https://vcvrack.com/downloads/Rack-SDK-${{ env.rack-sdk-version }}-mac-x64%2Barm64.zip" || { curl -sSIL -A "Mozilla/5.0" "https://vcvrack.com/downloads/Rack-SDK-${{ env.rack-sdk-version }}-mac-x64%2Barm64.zip"; exit 1; }
           unzip -q Rack-SDK.zip
       - name: Build plugin
         run: |
