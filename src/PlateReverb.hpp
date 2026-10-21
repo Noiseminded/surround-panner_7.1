@@ -41,6 +41,10 @@ struct ReverbDelay {
 		buf[w] = x;
 		w = (w + 1) & mask;
 	}
+	/** The sample written exactly `ago` samples ago (ago >= 1). */
+	float sample(int ago) const {
+		return buf[(w - ago) & mask];
+	}
 	/** The sample written `d` samples ago (d >= 1), linearly interpolated. */
 	float read(float d) const {
 		if (d < 1.f)
@@ -57,12 +61,39 @@ struct ReverbDelay {
 };
 
 
+/** Fractional delay read through a first-order allpass interpolator. Unlike linear
+interpolation it keeps every frequency at full level, so a recirculating tank loses no high end
+from interpolation alone, and a frozen tail can keep modulating without fading. */
+struct AllpassRead {
+	float y1 = 0.f;
+
+	void reset() {
+		y1 = 0.f;
+	}
+	float read(const ReverbDelay& line, float delay) {
+		// Keep the fractional part in [0.5, 1.5) so the interpolator stays well behaved
+		float maxD = (float) line.mask - 3.f;
+		if (delay < 1.5f)
+			delay = 1.5f;
+		if (delay > maxD)
+			delay = maxD;
+		int i = (int) (delay - 0.5f);
+		float d = delay - i;
+		float eta = (1.f - d) / (1.f + d);
+		float y = eta * line.sample(i) + line.sample(i + 1) - eta * y1;
+		y1 = y;
+		return y;
+	}
+};
+
+
 /** Schroeder allpass with a fractional (modulatable) length. */
 struct ReverbAllpass {
 	ReverbDelay line;
+	AllpassRead tap;
 
 	float process(float x, float length, float g) {
-		float z = line.read(length);
+		float z = tap.read(line, length);
 		float v = x + g * z;
 		line.push(v);
 		return z - g * v;
@@ -102,6 +133,7 @@ struct PlateReverb7 {
 		ReverbDelay delayA;
 		ReverbAllpass ap2;   ///< "decay diffusion 2"
 		ReverbDelay delayB;
+		AllpassRead readA, readB;
 		float lp = 0.f;
 		float hpState = 0.f;
 		float out = 0.f;     ///< end of this half, fed into the other half
@@ -121,6 +153,8 @@ struct PlateReverb7 {
 	ReverbDelay outDelay[NUM_SPEAKERS];
 	float lfoPhase = 0.f;
 	float sizeSmooth = 1.f;
+	/** 0 = running, 1 = frozen. Glides between the two so engaging freeze never clicks. */
+	float freezeMix = 0.f;
 
 	PlateReverb7() {
 		buildTaps();
@@ -164,8 +198,14 @@ struct PlateReverb7 {
 	void clear() {
 		for (int h = 0; h < 2; h++) {
 			preDelay[h].clear();
-			for (int i = 0; i < 4; i++)
+			for (int i = 0; i < 4; i++) {
 				diffuser[h][i].line.clear();
+				diffuser[h][i].tap.reset();
+			}
+			half[h].ap1.tap.reset();
+			half[h].ap2.tap.reset();
+			half[h].readA.reset();
+			half[h].readB.reset();
 			half[h].ap1.line.clear();
 			half[h].delayA.clear();
 			half[h].ap2.line.clear();
@@ -225,13 +265,22 @@ struct PlateReverb7 {
 		if (sampleRate <= 0.f)
 			return;
 
-		const bool freeze = p.freeze;
-		const float decay = freeze ? 1.f : std::min(std::max(p.decay, 0.f), 0.9999f);
-		const float inputGain = freeze ? 0.f : 1.f;
+		// Freeze glides in and out over about 30 ms: the input fades out, the decay rises to
+		// exactly 1 and the tank's filters fade out of the loop, so the tail holds forever.
+		const float freezeTarget = p.freeze ? 1.f : 0.f;
+		freezeMix += (freezeTarget - freezeMix) * (1.f - std::exp(-1.f / (0.03f * sampleRate)));
+		if (std::fabs(freezeTarget - freezeMix) < 1e-4f)
+			freezeMix = freezeTarget;
+		const float fm = freezeMix;
+		const float baseDecay = std::min(std::max(p.decay, 0.f), 0.9999f);
+		const float decay = baseDecay + (1.f - baseDecay) * fm;
+		const float inputGain = 1.f - fm;
 
 		// Smooth size changes so moving the knob glides instead of clicking
 		float targetSize = std::min(std::max(p.size, 0.25f), 2.f);
 		sizeSmooth += (targetSize - sizeSmooth) * (1.f - std::exp(-1.f / (0.15f * sampleRate)));
+		if (std::fabs(targetSize - sizeSmooth) < 1e-5f)
+			sizeSmooth = targetSize;
 		const float size = sizeSmooth;
 
 		// Pre-delay, input bandwidth and diffusion, separately for each side
@@ -254,47 +303,44 @@ struct PlateReverb7 {
 			diffused[h] = x;
 		}
 
-		// Tank modulation: two quadrature sines on the first allpass of each half
-		if (!freeze) {
-			lfoPhase += p.modSpeedHz / sampleRate;
-			lfoPhase -= std::floor(lfoPhase);
-		}
+		// Tank modulation: two quadrature sines on the first allpass of each half.
+		// It keeps running while frozen, so a held tail keeps moving instead of turning metallic.
+		lfoPhase += p.modSpeedHz / sampleRate;
+		lfoPhase -= std::floor(lfoPhase);
 		const float excursion = 24.f * k * std::min(std::max(p.modDepth, 0.f), 1.f);
 		const float mod[2] = {
 			excursion * (1.f + std::sin(2.f * float(M_PI) * lfoPhase)) * 0.5f,
 			excursion * (1.f + std::cos(2.f * float(M_PI) * lfoPhase)) * 0.5f,
 		};
 
-		const float dampCoef = freeze ? 1.f : onePoleCoef(std::min(p.highCutHz, 0.45f * sampleRate), sampleRate);
-		const float lowCoef = freeze ? 0.f : onePoleCoef(p.lowCutHz, sampleRate);
+		const float dampCoef = onePoleCoef(std::min(p.highCutHz, 0.45f * sampleRate), sampleRate);
+		const float lowCoef = onePoleCoef(p.lowCutHz, sampleRate);
 		const float dd1 = 0.70f;
 		const float dd2 = std::min(std::max(decay + 0.15f, 0.25f), 0.5f);
-
-		// Interpolated reads lose a little high end on every pass. That is part of the sound
-		// normally, but a frozen tail would slowly fade, so frozen lengths snap to whole samples.
-		auto len = [freeze](float l) {
-			return freeze ? std::round(l) : l;
-		};
 
 		// The two halves feed each other: compute both from last sample's ends
 		float prevOut[2] = {half[0].out, half[1].out};
 		for (int h = 0; h < 2; h++) {
 			Half& t = half[h];
 			float x = diffused[h] + decay * prevOut[1 - h];
-			x = t.ap1.process(x, len(t.lenAp1 * size + mod[h]), -dd1);
-			float a = t.delayA.read(len(t.lenA * size));
+			x = t.ap1.process(x, t.lenAp1 * size + mod[h], -dd1);
+			float a = t.readA.read(t.delayA, t.lenA * size);
 			t.delayA.push(x);
+			// The filters always run, so their state is ready when freeze is released;
+			// while frozen they are faded out of the loop
 			t.lp += dampCoef * (a - t.lp);
 			t.hpState += lowCoef * (t.lp - t.hpState);
-			// Frozen: no filtering at all, so the loop gain is exactly one
-			float y = (freeze ? a : (t.lp - t.hpState)) * decay;
-			y = t.ap2.process(y, len(t.lenAp2 * size), dd2);
-			t.out = t.delayB.read(len(t.lenB * size));
+			float filtered = t.lp - t.hpState;
+			float y = ((1.f - fm) * filtered + fm * a) * decay;
+			y = t.ap2.process(y, t.lenAp2 * size, dd2);
+			t.out = t.readB.read(t.delayB, t.lenB * size);
 			t.delayB.push(y);
 		}
 
 		// Read every speaker's taps, then delay the outputs for depth and set the rear balance
-		const float outGain = 0.6f;
+		// Wet level: about half the input level per speaker, so dry plus a full wet signal (or a
+		// frozen tail plus new playing) stays clear of the audio interface's ±10 V ceiling
+		const float outGain = 0.27f;
 		const float depthMs[NUM_SPEAKERS] = {0.f, 0.f, 0.f, 30.f, 30.f, 15.f, 15.f};  // L R C BL BR SL SR
 		float rear = std::min(std::max(p.rear, 0.f), 1.f);
 		float frontGain = std::min(1.f, 2.f * (1.f - rear));

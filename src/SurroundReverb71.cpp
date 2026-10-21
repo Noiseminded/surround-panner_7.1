@@ -114,6 +114,17 @@ struct SurroundReverb71 : Module {
 		wet = math::clamp(params[WET_PARAM].getValue() + cv(WET_CV_INPUT), 0.f, 1.f);
 	}
 
+	/** Leaves normal levels untouched and rounds off anything above 8 V, so the output never
+	goes past 10 V, where Audio 8 would clip hard. */
+	static float softLimit(float x) {
+		const float knee = 8.f;
+		float m = std::fabs(x);
+		if (m <= knee)
+			return x;
+		float y = knee + 2.f * std::tanh((m - knee) / 2.f);
+		return x < 0.f ? -y : y;
+	}
+
 	void process(const ProcessArgs& args) override {
 		if (args.sampleRate != reverb.sampleRate)
 			reverb.init(args.sampleRate);
@@ -145,7 +156,7 @@ struct SurroundReverb71 : Module {
 
 		for (int s = 0; s < NUM_SPEAKERS; s++) {
 			int ch = speakerChannel(s);
-			outputs[ch].setVoltage(dry * in[ch] + wet * rev[s]);
+			outputs[ch].setVoltage(softLimit(dry * in[ch] + wet * rev[s]));
 		}
 		// No reverb in the LFE: low reverb tails just turn to mud on a subwoofer
 		outputs[CH_LFE].setVoltage(dry * in[CH_LFE]);
