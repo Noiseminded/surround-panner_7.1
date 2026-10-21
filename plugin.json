@@ -1,7 +1,7 @@
 {
   "slug": "NoisemindedSurroundPanner",
   "name": "Surround Panner 7.1",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "license": "GPL-3.0-or-later",
   "brand": "Noiseminded",
   "author": "Noiseminded",
@@ -20,6 +20,15 @@
       "tags": [
         "Panning",
         "Polyphonic",
+        "Utility"
+      ]
+    },
+    {
+      "slug": "HeadphoneMonitor71",
+      "name": "Headphone Monitor 7.1",
+      "description": "Previews a 7.1 speaker mix on headphones with binaural rendering (MIT KEMAR head-related impulse responses)",
+      "tags": [
+        "Mixer",
         "Utility"
       ]
     }

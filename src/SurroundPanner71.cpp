@@ -1,21 +1,10 @@
 #include "plugin.hpp"
-#include "PanLaw.hpp"
+#include "Common.hpp"
 
-using namespace surround;
+using namespace noiseminded;
 
 
 static const int MAX_CHANNELS = 16;
-
-static const char* SPEAKER_SHORT[NUM_SPEAKERS] = {"L", "R", "C", "BL", "BR", "SL", "SR"};
-static const char* SPEAKER_LONG[NUM_SPEAKERS] = {
-	"Front left (L)",
-	"Front right (R)",
-	"Centre (C)",
-	"Back left (BL)",
-	"Back right (BR)",
-	"Side left (SL)",
-	"Side right (SR)",
-};
 
 static const float LFE_CUTOFFS[] = {80.f, 100.f, 120.f};
 static const int NUM_LFE_CUTOFFS = 3;
@@ -52,12 +41,6 @@ struct SurroundPanner71 : Module {
 		LIGHTS_LEN
 	};
 
-	/** Output port for each full-range speaker. */
-	static int speakerOutput(int speaker) {
-		static const int map[NUM_SPEAKERS] = {L_OUTPUT, R_OUTPUT, C_OUTPUT, BL_OUTPUT, BR_OUTPUT, SL_OUTPUT, SR_OUTPUT};
-		return map[speaker];
-	}
-
 	// Settings (saved with the patch)
 	Layout layout;
 	bool sumPoly = true;
@@ -92,7 +75,7 @@ struct SurroundPanner71 : Module {
 		configInput(SPREAD_INPUT, "Spread CV (10 V = 100%)");
 
 		for (int s = 0; s < NUM_SPEAKERS; s++)
-			configOutput(speakerOutput(s), SPEAKER_LONG[s]);
+			configOutput(speakerChannel(s), SPEAKER_LONG[s]);
 		configOutput(LFE_OUTPUT, "LFE (low-passed send)");
 
 		configBypass(IN_INPUT, C_OUTPUT);
@@ -108,7 +91,7 @@ struct SurroundPanner71 : Module {
 		lastChannels = 0;
 	}
 
-	/** Recomputes the target gain of every voice. With `jumpFrom`, voices from that index on snap to their target instead of gliding. */
+	/** Recomputes the target gain of every voice. Voices from `jumpFrom` on snap to their target instead of gliding. */
 	void updateTargets(int channels, int jumpFrom) {
 		ring.build(layout);
 		const float steps = (float) controlDivider.getDivision();
@@ -175,7 +158,7 @@ struct SurroundPanner71 : Module {
 
 		// Full-range speakers
 		for (int s = 0; s < NUM_SPEAKERS; s++) {
-			Output& out = outputs[speakerOutput(s)];
+			Output& out = outputs[speakerChannel(s)];
 			if (sumPoly) {
 				float sum = 0.f;
 				for (int c = 0; c < channels; c++)
@@ -214,10 +197,7 @@ struct SurroundPanner71 : Module {
 
 	json_t* dataToJson() override {
 		json_t* rootJ = json_object();
-		json_t* anglesJ = json_array();
-		for (int s = 0; s < NUM_SPEAKERS; s++)
-			json_array_append_new(anglesJ, json_real(layout.angles[s]));
-		json_object_set_new(rootJ, "angles", anglesJ);
+		json_object_set_new(rootJ, "angles", anglesToJson(layout));
 		json_object_set_new(rootJ, "useCentre", json_boolean(layout.enabled[SPK_C]));
 		json_object_set_new(rootJ, "sumPoly", json_boolean(sumPoly));
 		json_object_set_new(rootJ, "lfeCutoff", json_real(lfeCutoff));
@@ -225,14 +205,7 @@ struct SurroundPanner71 : Module {
 	}
 
 	void dataFromJson(json_t* rootJ) override {
-		json_t* anglesJ = json_object_get(rootJ, "angles");
-		if (anglesJ && json_is_array(anglesJ)) {
-			for (int s = 0; s < NUM_SPEAKERS && s < (int) json_array_size(anglesJ); s++) {
-				json_t* aJ = json_array_get(anglesJ, s);
-				if (json_is_number(aJ))
-					layout.angles[s] = math::clamp((float) json_number_value(aJ), -180.f, 180.f);
-			}
-		}
+		anglesFromJson(json_object_get(rootJ, "angles"), layout);
 		json_t* centreJ = json_object_get(rootJ, "useCentre");
 		if (centreJ)
 			layout.enabled[SPK_C] = json_boolean_value(centreJ);
@@ -246,100 +219,25 @@ struct SurroundPanner71 : Module {
 };
 
 
-// Context menu slider for one speaker angle
-
-struct AngleQuantity : Quantity {
-	SurroundPanner71* module;
-	int speaker;
-
-	AngleQuantity(SurroundPanner71* module, int speaker) : module(module), speaker(speaker) {}
-
-	void setValue(float value) override {
-		module->layout.angles[speaker] = math::clamp(value, getMinValue(), getMaxValue());
-	}
-	float getValue() override {
-		return module->layout.angles[speaker];
-	}
-	float getMinValue() override {
-		return -180.f;
-	}
-	float getMaxValue() override {
-		return 180.f;
-	}
-	float getDefaultValue() override {
-		return DEFAULT_ANGLES[speaker];
-	}
-	int getDisplayPrecision() override {
-		return 4;
-	}
-	std::string getLabel() override {
-		return SPEAKER_LONG[speaker];
-	}
-	std::string getUnit() override {
-		return "°";
-	}
-};
-
-struct AngleSlider : ui::Slider {
-	AngleSlider(SurroundPanner71* module, int speaker) {
-		quantity = new AngleQuantity(module, speaker);
-		box.size.x = 240.f;
-	}
-	~AngleSlider() {
-		delete quantity;
-	}
-};
-
-
-// Colours shared by the panel widgets
-static const NVGcolor COLOR_TEXT = nvgRGB(0xe6, 0xe1, 0xd6);
-static const NVGcolor COLOR_MUTED = nvgRGB(0x8a, 0x94, 0xa3);
-static const NVGcolor COLOR_ACCENT = nvgRGB(0xe2, 0x79, 0x3a);
-static const NVGcolor COLOR_SPEAKER_OFF = nvgRGB(0x3a, 0x44, 0x56);
-
-
-/** Static text on the panel, drawn with Rack's built-in font (no text-to-path conversion needed in the SVG). */
-struct PanelLabels : widget::TransparentWidget {
-	struct Label {
-		float x, y, size;
-		const char* text;
-		NVGcolor color;
-	};
-	std::vector<Label> labels;
-
-	void add(float xMm, float yMm, float size, const char* text, NVGcolor color = COLOR_TEXT) {
-		Label l;
-		l.x = xMm;
-		l.y = yMm;
-		l.size = size;
-		l.text = text;
-		l.color = color;
-		labels.push_back(l);
-	}
-
-	void draw(const DrawArgs& args) override {
-		std::shared_ptr<window::Font> font = APP->window->loadFont(asset::system("res/fonts/Nunito-Bold.ttf"));
-		if (!font || font->handle < 0)
-			return;
-		nvgFontFaceId(args.vg, font->handle);
-		nvgTextAlign(args.vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-		for (const Label& l : labels) {
-			nvgFontSize(args.vg, l.size);
-			nvgFillColor(args.vg, l.color);
-			Vec p = mm2px(Vec(l.x, l.y));
-			nvgText(args.vg, p.x, p.y, l.text, NULL);
-		}
-	}
-};
-
-
-/** Top view of the room: speakers light up with their gain, orange dots show each voice and its spread. */
+/** Top view of the room, drawn in white on the panel's black window.
+Speakers fill up with their gain, an X marks each voice, and a dashed arc shows its spread. */
 struct PanDisplay : widget::TransparentWidget {
 	SurroundPanner71* module = NULL;
 
-	Vec polar(Vec centre, float radius, float degrees) {
+	static Vec polar(Vec centre, float radius, float degrees) {
 		float r = degrees * float(M_PI) / 180.f;
 		return Vec(centre.x + radius * std::sin(r), centre.y - radius * std::cos(r));
+	}
+
+	/** A dashed arc between two azimuths (degrees, clockwise from the top). */
+	static void dashedArc(NVGcontext* vg, Vec centre, float radius, float from, float to, float dashDeg, float gapDeg) {
+		for (float a = from; a < to; a += dashDeg + gapDeg) {
+			float b = std::min(a + dashDeg, to);
+			nvgBeginPath(vg);
+			nvgArc(vg, centre.x, centre.y, radius,
+				(a - 90.f) * float(M_PI) / 180.f, (b - 90.f) * float(M_PI) / 180.f, NVG_CW);
+			nvgStroke(vg);
+		}
 	}
 
 	void drawLayer(const DrawArgs& args, int layer) override {
@@ -351,55 +249,50 @@ struct PanDisplay : widget::TransparentWidget {
 	void drawScene(const DrawArgs& args) {
 		NVGcontext* vg = args.vg;
 		Vec centre = box.size.div(2.f);
-		float ringR = mm2px(15.5f);
+		float ringR = mm2px(13.2f);
+		float innerR = ringR * 0.62f;
 
 		// Ring
-		nvgBeginPath(vg);
-		nvgCircle(vg, centre.x, centre.y, ringR);
-		nvgStrokeColor(vg, nvgRGBA(0xff, 0xff, 0xff, 0x30));
-		nvgStrokeWidth(vg, 1.f);
-		nvgStroke(vg);
+		nvgStrokeColor(vg, PAPER);
+		nvgStrokeWidth(vg, mm2px(0.3f));
+		nvgLineCap(vg, NVG_BUTT);
+		dashedArc(vg, centre, ringR, 0.f, 360.f, 6.f, 4.f);
 
 		// Listener
 		nvgBeginPath(vg);
-		nvgMoveTo(vg, centre.x, centre.y - mm2px(2.2f));
-		nvgLineTo(vg, centre.x - mm2px(1.4f), centre.y + mm2px(1.2f));
-		nvgLineTo(vg, centre.x + mm2px(1.4f), centre.y + mm2px(1.2f));
+		nvgMoveTo(vg, centre.x, centre.y - mm2px(2.f));
+		nvgLineTo(vg, centre.x - mm2px(1.3f), centre.y + mm2px(1.1f));
+		nvgLineTo(vg, centre.x + mm2px(1.3f), centre.y + mm2px(1.1f));
 		nvgClosePath(vg);
-		nvgFillColor(vg, COLOR_MUTED);
+		nvgFillColor(vg, PAPER);
 		nvgFill(vg);
 
 		// Voices
 		int channels = module ? module->dispChannels : 1;
-		float innerR = ringR * 0.62f;
 		for (int c = 0; c < channels; c++) {
 			float az = module ? module->dispAzimuth[c] : 0.f;
 			float spread = module ? module->dispSpread[c] : 0.f;
 			if (spread > 0.001f) {
-				float width = spread * 360.f;
-				nvgBeginPath(vg);
-				if (width >= 359.f) {
-					nvgCircle(vg, centre.x, centre.y, innerR);
-				}
-				else {
-					float a0 = (az - width / 2.f - 90.f) * float(M_PI) / 180.f;
-					float a1 = (az + width / 2.f - 90.f) * float(M_PI) / 180.f;
-					nvgArc(vg, centre.x, centre.y, innerR, a0, a1, NVG_CW);
-				}
-				nvgStrokeColor(vg, nvgTransRGBAf(COLOR_ACCENT, 0.55f));
-				nvgStrokeWidth(vg, mm2px(1.2f));
-				nvgLineCap(vg, NVG_ROUND);
-				nvgStroke(vg);
+				float width = std::min(spread * 360.f, 360.f);
+				nvgStrokeColor(vg, PAPER);
+				nvgStrokeWidth(vg, mm2px(1.1f));
+				dashedArc(vg, centre, innerR, az - width / 2.f, az + width / 2.f, 4.f, 4.f);
 			}
 			Vec p = polar(centre, innerR, az);
+			float k = mm2px(1.2f);
 			nvgBeginPath(vg);
-			nvgCircle(vg, p.x, p.y, mm2px(1.3f));
-			nvgFillColor(vg, COLOR_ACCENT);
-			nvgFill(vg);
+			nvgMoveTo(vg, p.x - k, p.y - k);
+			nvgLineTo(vg, p.x + k, p.y + k);
+			nvgMoveTo(vg, p.x - k, p.y + k);
+			nvgLineTo(vg, p.x + k, p.y - k);
+			nvgStrokeColor(vg, PAPER);
+			nvgStrokeWidth(vg, mm2px(0.7f));
+			nvgLineCap(vg, NVG_ROUND);
+			nvgStroke(vg);
 		}
 
 		// Speakers and their names
-		std::shared_ptr<window::Font> font = APP->window->loadFont(asset::system("res/fonts/Nunito-Bold.ttf"));
+		std::shared_ptr<window::Font> font = loadFont("SpecialElite-Regular.ttf");
 		for (int s = 0; s < NUM_SPEAKERS; s++) {
 			float angle = module ? module->layout.angles[s] : DEFAULT_ANGLES[s];
 			bool enabled = module ? module->layout.enabled[s] : true;
@@ -407,23 +300,33 @@ struct PanDisplay : widget::TransparentWidget {
 			Vec p = polar(centre, ringR, angle);
 
 			nvgBeginPath(vg);
-			nvgCircle(vg, p.x, p.y, mm2px(1.9f));
-			if (enabled) {
-				nvgFillColor(vg, nvgLerpRGBA(COLOR_SPEAKER_OFF, COLOR_ACCENT, math::clamp(gain, 0.f, 1.f)));
-				nvgFill(vg);
-			}
-			else {
-				nvgStrokeColor(vg, COLOR_SPEAKER_OFF);
-				nvgStrokeWidth(vg, 1.f);
+			nvgCircle(vg, p.x, p.y, mm2px(1.7f));
+			nvgFillColor(vg, INK);
+			nvgFill(vg);
+			nvgStrokeColor(vg, PAPER);
+			nvgStrokeWidth(vg, mm2px(0.35f));
+			if (enabled)
 				nvgStroke(vg);
+			else {
+				// A disabled speaker is crossed out
+				float k = mm2px(1.2f);
+				nvgMoveTo(vg, p.x - k, p.y - k);
+				nvgLineTo(vg, p.x + k, p.y + k);
+				nvgStroke(vg);
+			}
+			if (enabled && gain > 0.01f) {
+				nvgBeginPath(vg);
+				nvgCircle(vg, p.x, p.y, mm2px(0.6f + 1.1f * math::clamp(gain, 0.f, 1.f)));
+				nvgFillColor(vg, PAPER);
+				nvgFill(vg);
 			}
 
 			if (font && font->handle >= 0) {
-				Vec t = polar(centre, ringR + mm2px(4.6f), angle);
+				Vec t = polar(centre, ringR + mm2px(4.2f), angle);
 				nvgFontFaceId(vg, font->handle);
-				nvgFontSize(vg, 8.f);
+				nvgFontSize(vg, mm2px(2.6f));
 				nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-				nvgFillColor(vg, enabled ? COLOR_TEXT : COLOR_MUTED);
+				nvgFillColor(vg, PAPER);
 				nvgText(vg, t.x, t.y, SPEAKER_SHORT[s], NULL);
 			}
 		}
@@ -435,61 +338,30 @@ struct SurroundPanner71Widget : ModuleWidget {
 	SurroundPanner71Widget(SurroundPanner71* module) {
 		setModule(module);
 		setPanel(createPanel(asset::plugin(pluginInstance, "res/SurroundPanner71.svg")));
+		addScrews(this);
 
-		addChild(createWidget<ScrewBlack>(Vec(RACK_GRID_WIDTH, 0)));
-		addChild(createWidget<ScrewBlack>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
-		addChild(createWidget<ScrewBlack>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-		addChild(createWidget<ScrewBlack>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-
-		// Text
-		PanelLabels* labels = createWidget<PanelLabels>(Vec(0, 0));
-		labels->box.size = box.size;
-		labels->add(40.64f, 7.2f, 10.f, "SURROUND PANNER 7.1");
-		labels->add(16.f, 58.6f, 8.f, "AZIMUTH");
-		labels->add(40.64f, 58.6f, 8.f, "SPREAD");
-		labels->add(65.28f, 58.6f, 8.f, "LFE SEND");
-		labels->add(9.5f, 74.6f, 7.f, "CV", COLOR_MUTED);
-		labels->add(21.5f, 74.6f, 7.f, "AMT", COLOR_MUTED);
-		labels->add(34.f, 74.6f, 7.f, "CV", COLOR_MUTED);
-		labels->add(46.f, 74.6f, 7.f, "AMT", COLOR_MUTED);
-		labels->add(66.04f, 74.6f, 8.f, "IN", COLOR_ACCENT);
-		static const char* row1[4] = {"L", "R", "C", "LFE"};
-		static const char* row2[4] = {"BL", "BR", "SL", "SR"};
-		static const char* nums1[4] = {"1", "2", "3", "4"};
-		static const char* nums2[4] = {"5", "6", "7", "8"};
-		const float jackX[4] = {13.97f, 31.75f, 49.53f, 67.31f};
-		for (int i = 0; i < 4; i++) {
-			labels->add(jackX[i], 92.2f, 8.f, row1[i]);
-			labels->add(jackX[i] + 5.6f, 92.2f, 6.f, nums1[i], COLOR_MUTED);
-			labels->add(jackX[i], 106.4f, 8.f, row2[i]);
-			labels->add(jackX[i] + 5.6f, 106.4f, 6.f, nums2[i], COLOR_MUTED);
-		}
-		labels->add(40.64f, 123.0f, 8.f, "NOISEMINDED", COLOR_MUTED);
-		addChild(labels);
-
-		// Room display
-		PanDisplay* display = createWidget<PanDisplay>(mm2px(Vec(5.f, 11.f)));
-		display->box.size = mm2px(Vec(71.28f, 43.f));
+		// Room display, inside the black window of the panel
+		PanDisplay* display = createWidget<PanDisplay>(mm2px(Vec(5.f, 18.5f)));
+		display->box.size = mm2px(Vec(71.28f, 38.f));
 		display->module = module;
 		addChild(display);
 
 		// Controls
-		addParam(createParamCentered<RoundLargeBlackKnob>(mm2px(Vec(16.f, 66.f)), module, SurroundPanner71::AZIMUTH_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.64f, 66.f)), module, SurroundPanner71::SPREAD_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(65.28f, 66.f)), module, SurroundPanner71::LFE_PARAM));
+		addParam(createParamCentered<PunkKnobLarge>(mm2px(Vec(16.f, 69.f)), module, SurroundPanner71::AZIMUTH_PARAM));
+		addParam(createParamCentered<PunkKnob>(mm2px(Vec(40.64f, 69.f)), module, SurroundPanner71::SPREAD_PARAM));
+		addParam(createParamCentered<PunkKnob>(mm2px(Vec(65.28f, 69.f)), module, SurroundPanner71::LFE_PARAM));
 
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(9.5f, 81.f)), module, SurroundPanner71::AZIMUTH_INPUT));
-		addParam(createParamCentered<Trimpot>(mm2px(Vec(21.5f, 81.f)), module, SurroundPanner71::AZIMUTH_ATT_PARAM));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(34.f, 81.f)), module, SurroundPanner71::SPREAD_INPUT));
-		addParam(createParamCentered<Trimpot>(mm2px(Vec(46.f, 81.f)), module, SurroundPanner71::SPREAD_ATT_PARAM));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(66.04f, 81.f)), module, SurroundPanner71::IN_INPUT));
+		addInput(createInputCentered<PunkJack>(mm2px(Vec(9.5f, 84.f)), module, SurroundPanner71::AZIMUTH_INPUT));
+		addParam(createParamCentered<PunkTrimpot>(mm2px(Vec(21.5f, 84.f)), module, SurroundPanner71::AZIMUTH_ATT_PARAM));
+		addInput(createInputCentered<PunkJack>(mm2px(Vec(34.f, 84.f)), module, SurroundPanner71::SPREAD_INPUT));
+		addParam(createParamCentered<PunkTrimpot>(mm2px(Vec(46.f, 84.f)), module, SurroundPanner71::SPREAD_ATT_PARAM));
+		addInput(createInputCentered<PunkJack>(mm2px(Vec(66.04f, 84.f)), module, SurroundPanner71::IN_INPUT));
 
-		// Outputs in 7.1 channel order
-		const int row1Out[4] = {SurroundPanner71::L_OUTPUT, SurroundPanner71::R_OUTPUT, SurroundPanner71::C_OUTPUT, SurroundPanner71::LFE_OUTPUT};
-		const int row2Out[4] = {SurroundPanner71::BL_OUTPUT, SurroundPanner71::BR_OUTPUT, SurroundPanner71::SL_OUTPUT, SurroundPanner71::SR_OUTPUT};
+		// Outputs in 7.1 channel order, two rows of four
+		const float jackX[4] = {13.97f, 31.75f, 49.53f, 67.31f};
 		for (int i = 0; i < 4; i++) {
-			addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(jackX[i], 98.5f)), module, row1Out[i]));
-			addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(jackX[i], 112.7f)), module, row2Out[i]));
+			addOutput(createOutputCentered<PunkJackDark>(mm2px(Vec(jackX[i], 100.6f)), module, i));
+			addOutput(createOutputCentered<PunkJackDark>(mm2px(Vec(jackX[i], 113.8f)), module, 4 + i));
 		}
 	}
 
@@ -498,19 +370,7 @@ struct SurroundPanner71Widget : ModuleWidget {
 
 		menu->addChild(new MenuSeparator);
 		menu->addChild(createMenuLabel("Speaker layout"));
-
-		menu->addChild(createSubmenuItem("Speaker angles", "", [=](Menu* menu) {
-			for (int s = 0; s < NUM_SPEAKERS; s++)
-				menu->addChild(new AngleSlider(module, s));
-			menu->addChild(new MenuSeparator);
-			menu->addChild(createMenuItem("Reset to 7.1 (ITU / Dolby)", "", [=]() {
-				module->layout.setDefaultAngles();
-			}));
-			menu->addChild(createMenuItem("Even circle (7 × 51.4°)", "", [=]() {
-				module->layout.setEvenAngles();
-			}));
-		}));
-
+		menu->addChild(createSpeakerAnglesMenu(&module->layout));
 		menu->addChild(createBoolPtrMenuItem("Use centre speaker for panning", "", &module->layout.enabled[SPK_C]));
 
 		menu->addChild(new MenuSeparator);
