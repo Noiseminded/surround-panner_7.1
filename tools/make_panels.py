@@ -4,6 +4,8 @@
 Rack's SVG renderer (nanosvg) cannot draw text, patterns or filters, so every label is
 converted to a path here, and halftones are drawn as individual dots.
 
+Fonts: Anton (titles, SIL OFL) and Special Elite (labels, Apache 2.0), in res/fonts.
+
 Usage:  python3 tools/make_panels.py      (needs: pip install fonttools)
 """
 
@@ -67,7 +69,6 @@ class Font:
 
 ANTON = Font("Anton-Regular.ttf")
 TYPE = Font("SpecialElite-Regular.ttf")
-STENCIL = Font("BlackOpsOne-Regular.ttf")
 
 
 def text(font, txt, x, y, size, fill=INK, anchor="middle", spacing=0.0, transform=None):
@@ -90,14 +91,14 @@ def dymo(txt, x, y, size=2.6, rotate=0.0, inverse=False):
 
 
 def ransom(chars, x, y, size, rotations):
-	"""Cut-out letters of mismatched styles, like a ransom note. Each char gets its own box."""
+	"""Cut-out pieces of text, like a ransom note. Each piece gets its own box, alternating paper and ink."""
 	out = []
-	styles = [(PAPER, INK, ANTON), (INK, PAPER, STENCIL), (PAPER, INK, STENCIL), (INK, PAPER, ANTON)]
+	styles = [(PAPER, INK, ANTON), (INK, PAPER, ANTON)]
 	cx = x
 	for i, ch in enumerate(chars):
 		bg, fg, font = styles[i % len(styles)]
-		cw = max(font.width(ch, size), size * 0.28) + size * 0.32
-		ch_h = size * 0.95
+		cw = max(font.width(ch, size), size * 0.28) + size * 0.55
+		ch_h = size * 1.05
 		rot = rotations[i % len(rotations)]
 		mx, my = cx + cw / 2, y
 		out.append(f'<g transform="rotate({rot} {mx} {my})">')
@@ -195,9 +196,9 @@ def scribble_underline(x0, x1, y, seed=1):
 def brand_strip(width):
 	"""Halftone fading up from the bottom edge, with the brand on a cut-out label."""
 	out = [halftone(0, 119.5, width, HEIGHT + 0.5, 1.15, 0.55, fade="up")]
-	w = ANTON.width("NOISEMINDED", 3.2, 0.3) + 3
+	w = ANTON.width("noiseminded", 3.2, 0.3) + 3
 	out.append(f'<rect x="{width / 2 - w / 2}" y="121.1" width="{w}" height="4.6" fill="{PAPER}" stroke="{INK}" stroke-width="0.4"/>')
-	out.append(text(ANTON, "NOISEMINDED", width / 2, 124.65, 3.2, INK, spacing=0.3))
+	out.append(text(ANTON, "noiseminded", width / 2, 124.65, 3.2, INK, spacing=0.3))
 	return "".join(out)
 
 
@@ -215,7 +216,7 @@ def surround_panner():
 	# Title band
 	b.append(f'<polygon points="0,0 {W},0 {W},14.6 {W * 0.62},15.6 {W * 0.3},14.2 0,15.2" fill="{INK}"/>')
 	b.append(text(ANTON, "SURROUND PANNER", 8.0, 11.6, 6.6, PAPER, anchor="start", spacing=0.15))
-	b.append(ransom("7.1", 61.2, 10.4, 6.0, [-7, 5, -3]))
+	b.append(ransom(["7", ".1"], 60.6, 10.4, 6.0, [-7, 5]))
 
 	# Room display window (the widget draws inside it) with tape on the corners
 	b.append(f'<rect x="5" y="18.5" width="{W - 10}" height="38" fill="{INK}"/>')
@@ -267,16 +268,13 @@ def headphone_monitor():
 	b.append(f'<polygon points="0,0 {W},0 {W},20.4 {W * 0.55},21.4 0,20.2" fill="{INK}"/>')
 	b.append(text(ANTON, "HEADPHONE", 5.6, 11.4, 6.0, PAPER, anchor="start", spacing=0.12))
 	b.append(text(ANTON, "MONITOR", 5.6, 18.4, 6.0, PAPER, anchor="start", spacing=0.12))
-	b.append(ransom("7.1", 31.5, 19.4, 5.6, [6, -5, 4]))
+	b.append(ransom(["7", ".1"], 32.0, 19.4, 5.6, [6, -5]))
 
 	# Headphones on a halftone burst
-	b.append(halftone_vignette(3.2, 23.2, W - 3.2, 44.6, 1.05, 0.5))
-	b.append(headphones(W / 2, 30.4, 1.05))
-	b.append(text(TYPE, "preview the room", W / 2, 46.8, 2.4, INK))
-	b.append(scribble_underline(W / 2 - 13, W / 2 + 13, 47.9, seed=7))
+	b.append(halftone_vignette(3.2, 23.6, W - 3.2, 50.4, 1.05, 0.5))
+	b.append(headphones(W / 2, 32.4, 1.15))
 
 	# Inputs, in 7.1 order
-	b.append(dymo("FROM YOUR PATCH", W / 2, 52.4, size=2.4, rotate=-1.5))
 	cols = [14.0, 36.8]
 	pairs = [("L", "1", "R", "2"), ("C", "3", "LFE", "4"), ("BL", "5", "BR", "6"), ("SL", "7", "SR", "8")]
 	for r, (a, na, c, nc) in enumerate(pairs):
