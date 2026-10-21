@@ -89,7 +89,20 @@ jobs:
       - name: Get Rack-SDK
         run: |
           pushd $HOME
-          curl -fSL --retry 5 --retry-all-errors --retry-delay 5 -A "Mozilla/5.0" -o Rack-SDK.zip "https://vcvrack.com/downloads/Rack-SDK-${{ env.rack-sdk-version }}-mac-x64%2Barm64.zip" || { echo "::error::SDK download failed: $(curl -sSIL -A 'Mozilla/5.0' 'https://vcvrack.com/downloads/Rack-SDK-${{ env.rack-sdk-version }}-mac-x64%2Barm64.zip' 2>&1 | tr '\r\n' '  ' | cut -c1-600)"; exit 1; }
+          # Recent SDKs are published per architecture; older ones as one universal zip
+          ok=0
+          for name in mac-${{ matrix.platform }} mac-x64%2Barm64; do
+            url="https://vcvrack.com/downloads/Rack-SDK-${{ env.rack-sdk-version }}-$name.zip"
+            if curl -fsSL --retry 3 --retry-delay 5 -o Rack-SDK.zip "$url"; then
+              echo "Downloaded $url"
+              ok=1
+              break
+            fi
+          done
+          if [ $ok != 1 ]; then
+            echo "::error::Could not download the Rack SDK for mac-${{ matrix.platform }}"
+            exit 1
+          fi
           unzip -q Rack-SDK.zip
       - name: Build plugin
         run: |
