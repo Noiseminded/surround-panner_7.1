@@ -2,8 +2,9 @@
 
 ## 2.1.0
 
+- New module: **Surround Reverb 7.1**. A plate reverb after Dattorro's design for the whole 7.1 bus, with a separate decorrelated tail for every speaker, depth and front/rear balance, freeze and CV inputs.
 - New module: **Headphone Monitor 7.1**. Takes the same 8 channels you send to the speakers and renders them for headphones with measured head-related impulse responses (MIT KEMAR), so 7.1 patches can be previewed anywhere.
-- New black-and-white look for both modules, with matching knobs, jacks and screws.
+- New black-and-white look for all modules, with matching knobs, jacks and screws.
 - Surround Panner 7.1: the room display is now drawn in black and white; a voice is shown as an X, and a disabled centre speaker is crossed out.
 
 ## 2.0.0

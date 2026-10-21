@@ -1,8 +1,8 @@
 # Surround Panner 7.1
 
-Two [VCV Rack 2](https://vcvrack.com) modules by **Noiseminded** for working with a 7.1 speaker system.
+Three [VCV Rack 2](https://vcvrack.com) modules by **Noiseminded** for working with a 7.1 speaker system.
 
-![Surround Panner 7.1 and Headphone Monitor 7.1](docs/modules.png)
+![Surround Panner 7.1, Surround Reverb 7.1 and Headphone Monitor 7.1](docs/modules.png)
 
 **Surround Panner 7.1** pans a sound around the room.
 
@@ -13,6 +13,13 @@ Two [VCV Rack 2](https://vcvrack.com) modules by **Noiseminded** for working wit
 - Polyphonic: every voice of a polyphonic cable can have its own position.
 - A live top view of the room shows where each voice is and which speakers are playing.
 - Speaker angles can be adjusted to match the real room.
+
+**Surround Reverb 7.1** puts a plate reverb around the whole room.
+
+- A plate reverb after Jon Dattorro's classic design (the same family as the well-known Plateau), extended to 7.1.
+- Every speaker gets its own reverb tail, read from a different place in the reverb, so the room sounds wide instead of collapsing into the middle.
+- Patch it between the panner and Audio 8: the 8 channels go in, dry plus reverb come out in the same order.
+- Depth adds pre-delay towards the back of the room; Rear moves the reverb between front and back. Freeze holds the tail forever.
 
 **Headphone Monitor 7.1** lets you hear a 7.1 patch on headphones.
 
@@ -57,6 +64,12 @@ Add a **VCV Audio 8** module, select the room's audio interface, and connect the
 
 The small number next to each output on the panel is this channel. If your room is wired in a different order, patch each output to the jack of the matching speaker instead. Always check with a test sound first.
 
+## Adding reverb
+
+Put **Surround Reverb 7.1** between the panner and Audio 8: panner outputs into the reverb's inputs (same names, same numbers), reverb outputs into Audio 8. Several panners can share one reverb if you mix them first.
+
+To use it as a send instead (dry signal patched straight to the speakers elsewhere), turn **DRY** down to zero.
+
 ## Previewing on headphones
 
 Add a **Headphone Monitor 7.1** and connect the same 8 signals you send to Audio 8 (stack a second cable on each output). Connect its L and R outputs to a stereo Audio module for your headphones. Its inputs use the same numbers as the panner's outputs.
@@ -85,6 +98,25 @@ Right-click menu:
 - **Mix polyphonic voices to mono outputs** (on by default): each output carries one channel, ready for Audio 8. Turn off to keep the voices separate on polyphonic outputs.
 - **LFE low-pass**: 80, 100 or 120 Hz.
 
+### Surround Reverb 7.1
+
+| Control | What it does |
+|---|---|
+| **L R C LFE BL BR SL SR in** | The 7.1 bus, for example from the panner. Left-side speakers feed one half of the reverb, right-side speakers the other, the centre feeds both. |
+| **PRE-DELAY** | Gap before the reverb starts, 0 to 500 ms. |
+| **SIZE** | Size of the plate, 25% to 200%. Turning it while sound plays bends the pitch of the tail, which can be used as an effect. |
+| **DECAY** | How long the tail lasts. Near the top it rings for a very long time. |
+| **DIFFUSION** | How quickly the reverb becomes smooth. Lower values let early echoes through. |
+| **LOW CUT / HIGH CUT** | Filters inside the reverb (20 Hz to 1 kHz, 500 Hz to 20 kHz). High cut darkens the tail as it decays. |
+| **MOD SPEED / MOD DEPTH** | Slow pitch modulation inside the reverb, for a lusher, less metallic tail. |
+| **DEPTH** | Extra pre-delay for the sides (up to 15 ms) and backs (up to 30 ms), so the room feels deep. |
+| **REAR** | 50%: reverb even all around. Lower: more in front. Higher: more behind, like film mixes. |
+| **DRY / WET** | Levels of the original and reverb signals. The LFE passes through at the dry level, with no reverb. |
+| **FREEZE** | Button or gate: holds the current tail forever and ignores new input. |
+| **CV inputs** | Size, decay, high cut, modulation depth and wet. 10 V covers the knob's whole range. |
+
+Right-click menu: **Clear the reverb tail**.
+
 ### Headphone Monitor 7.1
 
 | Control | What it does |
@@ -99,6 +131,8 @@ Right-click menu: **Speaker angles**, the same as on the panner.
 
 The seven full-range speakers form a ring. For a sound at a given angle, only the two speakers either side of it play. Their gains follow the equal-power law: `cos` and `sin` of the position between them, so at the halfway point both play at about 71% (−3 dB) and the total power stays the same. Spread is made by splitting the sound into 16 points across the chosen width and adding up their power, so a wide sound still keeps a constant level. The LFE output never takes part in panning: bass below about 120 Hz has almost no direction.
 
+The reverb follows the figure-eight plate design from Jon Dattorro's "Effect Design, Part 1" (J. Audio Eng. Soc., 1997): the input is smeared by four allpass filters, then circulates in a loop of two cross-coupled halves with delays, damping and modulated allpasses. Dattorro reads a stereo output from seven points spread around the loop. Here each of the seven speakers reads its own seven points, with same-side points added and far-side points subtracted, so every speaker's tail is different (the tests check that the correlation between any two speakers stays low).
+
 The headphone monitor convolves each speaker signal with a pair of head-related impulse responses, one per ear, measured for that direction on a KEMAR dummy head. Directions between the measured 5° steps are interpolated. The LFE channel goes to both ears equally.
 
 ## Building from source
@@ -110,7 +144,7 @@ export RACK_DIR=/path/to/Rack-SDK
 make install
 ```
 
-The pan law and the headphone renderer have their own tests, which need only a C++ compiler:
+The pan law, the reverb and the headphone renderer have their own tests, which need only a C++ compiler:
 
 ```sh
 make -C tests

@@ -9,6 +9,7 @@ void init(Plugin* p) {
 
 	// Add modules here
 	p->addModel(modelSurroundPanner71);
+	p->addModel(modelSurroundReverb71);
 	p->addModel(modelHeadphoneMonitor71);
 
 	// Any other plugin initialization may go here.
