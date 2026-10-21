@@ -90,26 +90,6 @@ def dymo(txt, x, y, size=2.6, rotate=0.0, inverse=False):
 	return "".join(out)
 
 
-def ransom(chars, x, y, size, rotations):
-	"""Cut-out pieces of text, like a ransom note. Each piece gets its own box, alternating paper and ink."""
-	out = []
-	styles = [(PAPER, INK, ANTON), (INK, PAPER, ANTON)]
-	cx = x
-	for i, ch in enumerate(chars):
-		bg, fg, font = styles[i % len(styles)]
-		cw = max(font.width(ch, size), size * 0.28) + size * 0.55
-		ch_h = size * 1.05
-		rot = rotations[i % len(rotations)]
-		mx, my = cx + cw / 2, y
-		out.append(f'<g transform="rotate({rot} {mx} {my})">')
-		edge = PAPER if bg == INK else INK
-		out.append(f'<rect x="{cx}" y="{y - ch_h / 2}" width="{cw}" height="{ch_h}" fill="{bg}" stroke="{edge}" stroke-width="0.45"/>')
-		out.append(text(font, ch, mx, y + size * 0.36, size, fg))
-		out.append("</g>")
-		cx += cw + 0.5
-	return "".join(out)
-
-
 def tape(x, y, length, width, angle):
 	"""A strip of masking tape with torn zigzag ends, centred on (x, y)."""
 	rnd = random.Random(int(x * 100 + y))
@@ -215,8 +195,7 @@ def surround_panner():
 
 	# Title band
 	b.append(f'<polygon points="0,0 {W},0 {W},14.6 {W * 0.62},15.6 {W * 0.3},14.2 0,15.2" fill="{INK}"/>')
-	b.append(text(ANTON, "SURROUND PANNER", 8.0, 11.6, 6.6, PAPER, anchor="start", spacing=0.15))
-	b.append(ransom(["7", ".1"], 60.6, 10.4, 6.0, [-7, 5]))
+	b.append(text(ANTON, "SURROUND PANNER 7.1", W / 2, 11.6, 6.6, PAPER, spacing=0.15))
 
 	# Room display window (the widget draws inside it) with tape on the corners
 	b.append(f'<rect x="5" y="18.5" width="{W - 10}" height="38" fill="{INK}"/>')
@@ -267,8 +246,7 @@ def headphone_monitor():
 	# Title band, two lines
 	b.append(f'<polygon points="0,0 {W},0 {W},20.4 {W * 0.55},21.4 0,20.2" fill="{INK}"/>')
 	b.append(text(ANTON, "HEADPHONE", 5.6, 11.4, 6.0, PAPER, anchor="start", spacing=0.12))
-	b.append(text(ANTON, "MONITOR", 5.6, 18.4, 6.0, PAPER, anchor="start", spacing=0.12))
-	b.append(ransom(["7", ".1"], 32.0, 19.4, 5.6, [6, -5]))
+	b.append(text(ANTON, "MONITOR 7.1", 5.6, 18.4, 6.0, PAPER, anchor="start", spacing=0.12))
 
 	# Headphones on a halftone burst
 	b.append(halftone_vignette(3.2, 23.6, W - 3.2, 50.4, 1.05, 0.5))
