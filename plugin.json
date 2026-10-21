@@ -1,0 +1,27 @@
+{
+  "slug": "NoisemindedSurroundPanner",
+  "name": "Surround Panner 7.1",
+  "version": "2.0.0",
+  "license": "GPL-3.0-or-later",
+  "brand": "Noiseminded",
+  "author": "Noiseminded",
+  "authorEmail": "",
+  "authorUrl": "https://github.com/Noiseminded",
+  "pluginUrl": "https://github.com/Noiseminded/surround-panner_7.1",
+  "manualUrl": "https://github.com/Noiseminded/surround-panner_7.1#readme",
+  "sourceUrl": "https://github.com/Noiseminded/surround-panner_7.1",
+  "donateUrl": "",
+  "changelogUrl": "https://github.com/Noiseminded/surround-panner_7.1/blob/main/CHANGELOG.md",
+  "modules": [
+    {
+      "slug": "SurroundPanner71",
+      "name": "Surround Panner 7.1",
+      "description": "Pans a mono or polyphonic signal around a 7.1 speaker layout with an equal-power law, spread and an LFE send",
+      "tags": [
+        "Panning",
+        "Polyphonic",
+        "Utility"
+      ]
+    }
+  ]
+}
