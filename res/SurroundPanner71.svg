@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="81.28mm" height="128.5mm" viewBox="0 0 81.28 128.5">
+  <!-- Panel background -->
+  <rect x="0" y="0" width="81.28" height="128.5" fill="#1e232b"/>
+  <rect x="0" y="0" width="81.28" height="1.2" fill="#e2793a"/>
+  <!-- Room display -->
+  <rect x="5" y="11" width="71.28" height="43" rx="2" ry="2" fill="#11151b" stroke="#2e3646" stroke-width="0.3"/>
+  <!-- Control area divider -->
+  <line x1="5" y1="73" x2="76.28" y2="73" stroke="#2e3646" stroke-width="0.3"/>
+  <!-- Input highlight -->
+  <rect x="59.5" y="71.2" width="13.08" height="16" rx="1.5" ry="1.5" fill="#2a313c"/>
+  <!-- Outputs area -->
+  <rect x="4" y="88.4" width="73.28" height="30.6" rx="2" ry="2" fill="#2a313c"/>
+</svg>
