@@ -6,3 +6,5 @@
 /dep
 .DS_Store
 tests/test_panlaw
+tests/test_binaural
+tests/test_plate

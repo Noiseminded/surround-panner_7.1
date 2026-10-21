@@ -158,6 +158,37 @@ int main() {
 		check(e2 / e1 > 0.7 && e2 / e1 < 1.3, "frozen tail stays steady");
 	}
 
+	// Engaging and releasing freeze, again and again, never clicks or builds up
+	{
+		PlateReverb7 rv;
+		rv.init(rate);
+		PlateParams q;
+		q.decay = 0.8f;
+		q.depth = 0.f;
+		float out[NUM_SPEAKERS], prev[NUM_SPEAKERS] = {};
+		double steadyJump = 0.0, toggleJump = 0.0, peak = 0.0;
+		const int period = (int) (0.3f * rate);
+		for (int n = 0; n < (int) (8 * rate); n++) {
+			float t = n / rate;
+			float x = 5.f * std::sin(2.f * float(M_PI) * 220.f * t + 3.f * std::sin(2.f * float(M_PI) * 440.f * t));
+			bool toggling = t > 2.f;
+			q.freeze = toggling && ((n / period) % 2 == 1);
+			rv.process(0.7f * x, 0.f, q, out);
+			for (int s = 0; s < NUM_SPEAKERS; s++) {
+				double d = std::fabs(out[s] - prev[s]);
+				prev[s] = out[s];
+				peak = std::max(peak, (double) std::fabs(out[s]));
+				if (t > 1.f && !toggling)
+					steadyJump = std::max(steadyJump, d);
+				if (toggling)
+					toggleJump = std::max(toggleJump, d);
+			}
+		}
+		std::printf("Freeze toggling: biggest step %.2f (steady playing %.2f), peak %.2f V\n", toggleJump, steadyJump, peak);
+		check(toggleJump < 1.5 * steadyJump, "freeze toggling does not click");
+		check(peak < 10.0, "freeze toggling does not build up");
+	}
+
 	// Stays stable at extreme settings and other sample rates
 	{
 		const float rates[] = {44100.f, 96000.f, 192000.f};
