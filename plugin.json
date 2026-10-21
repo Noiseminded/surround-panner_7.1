@@ -24,6 +24,15 @@
       ]
     },
     {
+      "slug": "SurroundReverb71",
+      "name": "Surround Reverb 7.1",
+      "description": "Plate reverb for the whole 7.1 bus, after Dattorro's design, with a separate decorrelated tail for every speaker",
+      "tags": [
+        "Reverb",
+        "Effect"
+      ]
+    },
+    {
       "slug": "HeadphoneMonitor71",
       "name": "Headphone Monitor 7.1",
       "description": "Previews a 7.1 speaker mix on headphones with binaural rendering (MIT KEMAR head-related impulse responses)",

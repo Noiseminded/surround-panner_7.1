@@ -273,6 +273,59 @@ def headphone_monitor():
 	return svg(W, "".join(b))
 
 
+# ---------------------------------------------------------------- Surround Reverb 7.1 (20 HP)
+
+REVERB_JACK_X = [10.2 + i * 11.6 for i in range(8)]
+REVERB_KNOB_X = [14.5, 38.2, 63.4, 87.1]
+REVERB_KNOB_Y = [45.0, 62.0, 79.0]
+REVERB_CV_X = [10.0, 23.0, 36.0, 49.0, 62.0, 76.0, 90.0]
+
+
+def surround_reverb():
+	W = 20 * HP  # 101.6
+	b = [f'<rect width="{W}" height="{HEIGHT}" fill="{PAPER}"/>']
+
+	# Title band
+	b.append(f'<polygon points="0,0 {W},0 {W},14.4 {W * 0.7},15.4 {W * 0.35},14.0 0,15.0" fill="{INK}"/>')
+	b.append(text(ANTON, "SURROUND REVERB 7.1", W / 2, 11.6, 6.6, PAPER, spacing=0.15))
+
+	# Inputs: the 7.1 bus, in channel order
+	names = ["L", "R", "C", "LFE", "BL", "BR", "SL", "SR"]
+	for i, n in enumerate(names):
+		x = REVERB_JACK_X[i]
+		b.append(text(ANTON, n, x, 23.4, 3.4, INK))
+		b.append(text(TYPE, str(i + 1), x + 4.9, 23.2, 1.9, INK))
+
+	# Knobs
+	labels = [
+		["PRE-DELAY", "SIZE", "DECAY", "DIFFUSION"],
+		["LOW CUT", "HIGH CUT", "MOD SPEED", "MOD DEPTH"],
+		["DEPTH", "REAR", "DRY", "WET"],
+	]
+	rotations = [-2, 1.5, -1, 2, 1, -1.5, 2, -1, -2, 1, -1.5, 1.5]
+	for r, row in enumerate(labels):
+		for c, label in enumerate(row):
+			x, y = REVERB_KNOB_X[c], REVERB_KNOB_Y[r]
+			b.append(knob_ticks(x, y, 5.3))
+			b.append(dymo(label, x, y - 8.4, rotate=rotations[r * 4 + c]))
+
+	# CV inputs and freeze
+	for x, label in zip(REVERB_CV_X[:6], ["size", "decay", "hi cut", "mod", "wet", "gate"]):
+		b.append(text(TYPE, label, x, 88.4, 2.5, INK))
+	b.append(dymo("FREEZE", REVERB_CV_X[6], 87.6, size=2.4, rotate=-3))
+	b.append(f'<line x1="69.5" y1="85.6" x2="69.5" y2="97" stroke="{INK}" stroke-width="0.35" stroke-dasharray="1.2 0.8"/>')
+
+	# Output block
+	b.append(f'<polygon points="3.6,99.8 {W - 3.4},99.2 {W - 3.8},119 3.9,119.4" fill="{INK}"/>')
+	for i, n in enumerate(names):
+		x = REVERB_JACK_X[i]
+		b.append(text(ANTON, n, x, 105.0, 3.4, PAPER))
+		b.append(text(TYPE, str(i + 1), x + 4.9, 104.8, 1.9, PAPER))
+
+	b.append(brand_strip(W))
+	return svg(W, "".join(b))
+
+
 # ---------------------------------------------------------------- components
 
 def component(size_mm, body):
@@ -304,6 +357,18 @@ def jack(dark):
 	return component(size, body)
 
 
+def button(on):
+	size = 6.4
+	c = size / 2
+	if on:
+		body = (f'<rect x="0.4" y="0.4" width="{size - 0.8}" height="{size - 0.8}" fill="{INK}" stroke="{INK}" stroke-width="0.6"/>'
+			f'<rect x="1.9" y="1.9" width="{size - 3.8}" height="{size - 3.8}" fill="{PAPER}"/>')
+	else:
+		body = (f'<rect x="0.4" y="0.4" width="{size - 0.8}" height="{size - 0.8}" fill="{PAPER}" stroke="{INK}" stroke-width="0.6"/>'
+			f'<rect x="1.9" y="1.9" width="{size - 3.8}" height="{size - 3.8}" fill="none" stroke="{INK}" stroke-width="0.35"/>')
+	return component(size, body)
+
+
 def screw():
 	size = 5.08
 	c = size / 2
@@ -318,12 +383,15 @@ def main():
 	files = {
 		"SurroundPanner71.svg": surround_panner(),
 		"HeadphoneMonitor71.svg": headphone_monitor(),
+		"SurroundReverb71.svg": surround_reverb(),
 		"components/KnobLarge.svg": knob(12.2, 0.9),
 		"components/Knob.svg": knob(9.6, 0.8),
 		"components/Trimpot.svg": knob(6.0, 0.6),
 		"components/Jack.svg": jack(dark=False),
 		"components/JackDark.svg": jack(dark=True),
 		"components/Screw.svg": screw(),
+		"components/ButtonOff.svg": button(on=False),
+		"components/ButtonOn.svg": button(on=True),
 	}
 	for name, content in files.items():
 		with open(os.path.join(RES, name), "w") as f:
